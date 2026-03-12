@@ -76,10 +76,9 @@ class CubeSimulator(ctk.CTk):
         self.mask_rects = []
         self.mask_mode = self.cfg.get("mask_mode", "black")
         self.output_mode_var = ctk.StringVar(value=self.cfg.get("output_mode", MODE_PSEUDO_3D))
-        self.p4d_motion_var = ctk.StringVar(value=self.cfg.get("p4d_motion", "Abanico"))
+        self.p4d_motion_var = ctk.StringVar(value="Lineal")
         self.p4d_sweep_cm_var = ctk.StringVar(value=str(self.cfg.get("p4d_sweep_cm", "2.0")))
         self.p4d_z_slices_var = ctk.StringVar(value=str(self.cfg.get("p4d_z_slices", "40")))
-        self.p4d_fan_angle_var = ctk.StringVar(value=str(self.cfg.get("p4d_fan_angle_deg", "12")))
 
         self.label_titulo = ctk.CTkLabel(self, text="CUBE SIMULATOR", font=("Roboto", 28, "bold"))
         self.label_titulo.pack(pady=(18, 8))
@@ -109,8 +108,8 @@ class CubeSimulator(ctk.CTk):
 
         self.p4d_motion_label = ctk.CTkLabel(self.p4d_frame, text="Movimiento sintetico")
         self.p4d_motion_label.grid(row=1, column=0, sticky="w", padx=12, pady=6)
-        self.p4d_motion = ctk.CTkSegmentedButton(self.p4d_frame, values=["Abanico", "Lineal"], variable=self.p4d_motion_var, command=lambda _: self._save_preferences())
-        self.p4d_motion.grid(row=1, column=1, columnspan=3, sticky="ew", padx=12, pady=6)
+        self.p4d_motion = ctk.CTkLabel(self.p4d_frame, text="Lineal", text_color="white")
+        self.p4d_motion.grid(row=1, column=1, columnspan=3, sticky="w", padx=12, pady=6)
 
         self.p4d_sweep_label = ctk.CTkLabel(self.p4d_frame, text="Barrido simulado (cm)")
         self.p4d_sweep_label.grid(row=2, column=0, sticky="w", padx=12, pady=6)
@@ -122,19 +121,14 @@ class CubeSimulator(ctk.CTk):
         self.p4d_z_entry = ctk.CTkEntry(self.p4d_frame, textvariable=self.p4d_z_slices_var, width=120)
         self.p4d_z_entry.grid(row=2, column=3, sticky="w", padx=12, pady=6)
 
-        self.p4d_angle_label = ctk.CTkLabel(self.p4d_frame, text="Apertura abanico (+/- grados)")
-        self.p4d_angle_label.grid(row=3, column=0, sticky="w", padx=12, pady=6)
-        self.p4d_angle_entry = ctk.CTkEntry(self.p4d_frame, textvariable=self.p4d_fan_angle_var, width=120)
-        self.p4d_angle_entry.grid(row=3, column=1, sticky="w", padx=12, pady=6)
-
         self.p4d_note = ctk.CTkLabel(
             self.p4d_frame,
-            text="Paso actual: Pseudo 4D conserva el movimiento temporal del video base y crea clips por posicion Z.",
+            text="Paso actual: Pseudo 4D conserva el movimiento temporal del video base y crea clips por posicion Z con desplazamiento lineal.",
             text_color="gray",
             justify="left",
             wraplength=760,
         )
-        self.p4d_note.grid(row=4, column=0, columnspan=4, sticky="w", padx=12, pady=(4, 12))
+        self.p4d_note.grid(row=3, column=0, columnspan=4, sticky="w", padx=12, pady=(4, 12))
 
         self.status_label = ctk.CTkLabel(self, text="Inicializando...", text_color="gray")
         self.status_label.pack(pady=4)
@@ -145,6 +139,8 @@ class CubeSimulator(ctk.CTk):
         self.btn_change_workspace.pack(side="left", padx=8, pady=10)
         self.btn_open_output = ctk.CTkButton(self.workspace_frame, text="Abrir carpeta de salida", command=self.abrir_carpeta_salida, fg_color="#2F7D4A")
         self.btn_open_output.pack(side="left", padx=8, pady=10)
+        self.btn_preview_p4d = ctk.CTkButton(self.workspace_frame, text="Ver dataset Pseudo 4D", command=self.previsualizar_dataset_pseudo4d, fg_color="#7A5C1E")
+        self.btn_preview_p4d.pack(side="left", padx=8, pady=10)
 
         self.btn_cargar = ctk.CTkButton(self, text="1. CARGAR MP4 / AVI / DICOM", command=self.seleccionar_archivo)
         self.btn_cargar.pack(pady=10)
@@ -201,7 +197,7 @@ class CubeSimulator(ctk.CTk):
         self._refresh_status()
 
     def _bind_preference_events(self):
-        for variable in [self.p4d_sweep_cm_var, self.p4d_z_slices_var, self.p4d_fan_angle_var]:
+        for variable in [self.p4d_sweep_cm_var, self.p4d_z_slices_var]:
             variable.trace_add("write", lambda *_: self._save_preferences())
 
     def _refresh_status(self, extra_message: str | None = None):
@@ -215,10 +211,10 @@ class CubeSimulator(ctk.CTk):
     def _save_preferences(self):
         self.cfg["output_mode"] = self.output_mode_var.get()
         self.cfg["mask_mode"] = self.mask_mode_var.get()
-        self.cfg["p4d_motion"] = self.p4d_motion_var.get()
+        self.cfg["p4d_motion"] = "Lineal"
         self.cfg["p4d_sweep_cm"] = self.p4d_sweep_cm_var.get()
         self.cfg["p4d_z_slices"] = self.p4d_z_slices_var.get()
-        self.cfg["p4d_fan_angle_deg"] = self.p4d_fan_angle_var.get()
+        self.cfg["p4d_fan_angle_deg"] = "0"
         if getattr(self, "WORKSPACE_DIR", None):
             self.cfg["workspace_dir"] = self.WORKSPACE_DIR
         save_config(self.cfg)
@@ -245,6 +241,136 @@ class CubeSimulator(ctk.CTk):
 
     def abrir_carpeta_salida(self):
         self._open_folder(self.OUT_DIR)
+
+
+    def _latest_pseudo4d_manifest(self):
+        latest_manifest = None
+        latest_mtime = -1.0
+        for root, _, files in os.walk(self.OUT_DIR):
+            if "manifest.json" not in files:
+                continue
+            candidate = os.path.join(root, "manifest.json")
+            try:
+                with open(candidate, "r", encoding="utf-8") as f:
+                    manifest = json.load(f)
+            except Exception:
+                continue
+            if manifest.get("mode") != "pseudo4d_clips":
+                continue
+            mtime = os.path.getmtime(candidate)
+            if mtime > latest_mtime:
+                latest_mtime = mtime
+                latest_manifest = candidate
+        return latest_manifest
+
+    def _seleccionar_manifest_pseudo4d(self):
+        suggested = self._latest_pseudo4d_manifest()
+        if suggested and messagebox.askyesno(
+            "Abrir ultimo dataset",
+            f"Se encontro un dataset Pseudo 4D reciente:\n{suggested}\n\nQuieres abrirlo directamente?",
+        ):
+            return suggested
+
+        path = filedialog.askopenfilename(
+            title="Selecciona manifest.json de un dataset Pseudo 4D",
+            initialdir=os.path.dirname(suggested) if suggested else self.OUT_DIR,
+            filetypes=[("Archivos JSON", "*.json")],
+        )
+        return path
+
+    def previsualizar_dataset_pseudo4d(self):
+        manifest_path = self._seleccionar_manifest_pseudo4d()
+        if not manifest_path:
+            return
+
+        if not manifest_path.lower().endswith(".json"):
+            messagebox.showerror("Error", "Selecciona un archivo manifest.json valido.")
+            return
+
+        manifest = None
+        read_error = None
+        for encoding in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
+            try:
+                with open(manifest_path, "r", encoding=encoding) as f:
+                    manifest = json.load(f)
+                break
+            except Exception as exc:
+                read_error = exc
+
+        if manifest is None:
+            messagebox.showerror("Error", f"No se pudo leer el manifest:\n{read_error}")
+            return
+
+        if manifest.get("mode") != "pseudo4d_clips":
+            messagebox.showerror("Error", "El archivo seleccionado no corresponde a un dataset Pseudo 4D valido.")
+            return
+
+        clips_dir = os.path.join(os.path.dirname(manifest_path), manifest.get("clips_dir", "clips"))
+        clips = manifest.get("clips", [])
+        if not clips:
+            messagebox.showerror("Error", "El dataset no contiene clips para previsualizar.")
+            return
+
+        entries = []
+        for item in clips:
+            if isinstance(item, dict):
+                file_name = item.get("file")
+                position = item.get("position")
+            else:
+                file_name = item
+                position = None
+            if not file_name:
+                continue
+            entries.append((file_name, position))
+
+        if not entries:
+            messagebox.showerror("Error", "No se encontraron nombres de clips validos en el manifest.")
+            return
+
+        idx = 0
+        while True:
+            file_name, position = entries[idx]
+            clip_path = os.path.join(clips_dir, file_name)
+            if not os.path.isfile(clip_path):
+                messagebox.showerror("Error", f"No se encontro el clip:\n{clip_path}")
+                return
+
+            title = f"Pseudo 4D Viewer | Z {idx + 1}/{len(entries)}"
+            if position is not None:
+                title += f" | pos {position}"
+
+            cap = cv2.VideoCapture(clip_path)
+            if not cap.isOpened():
+                messagebox.showerror("Error", f"No se pudo abrir el clip:\n{clip_path}")
+                return
+
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                overlay = frame.copy()
+                help_text = "N: siguiente | P: anterior | Q/Esc: salir"
+                cv2.rectangle(overlay, (12, 12), (500, 54), (0, 0, 0), -1)
+                cv2.putText(overlay, help_text, (24, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+                cv2.imshow(title, overlay)
+                key = cv2.waitKey(20) & 0xFF
+                if key in (27, ord('q'), ord('Q')):
+                    cap.release()
+                    cv2.destroyWindow(title)
+                    return
+                if key in (ord('n'), ord('N'), 83):
+                    idx = min(len(entries) - 1, idx + 1)
+                    break
+                if key in (ord('p'), ord('P'), 81):
+                    idx = max(0, idx - 1)
+                    break
+
+            cap.release()
+            cv2.destroyWindow(title)
 
     def _init_workspace(self) -> bool:
         ws = self.cfg.get("workspace_dir")
@@ -303,7 +429,7 @@ class CubeSimulator(ctk.CTk):
             self.mode_hint.configure(
                 text=(
                     "Pseudo 4D: conserva el AVI como base temporal y exporta micro clips por posicion Z.\n"
-                    "Cada clip mantiene el movimiento original del video y solo cambia su posicion espacial sintetica."
+                    "Cada clip mantiene el movimiento original del video y solo cambia su posicion espacial sintetica lineal."
                 )
             )
             self.btn_procesar.configure(text="5. GENERAR PSEUDO 4D (CLIPS)")
@@ -322,12 +448,13 @@ class CubeSimulator(ctk.CTk):
         self._refresh_status()
 
     def _set_p4d_controls_state(self, state: str):
-        widgets = [self.p4d_motion, self.p4d_sweep_entry, self.p4d_z_entry, self.p4d_angle_entry]
+        widgets = [self.p4d_sweep_entry, self.p4d_z_entry]
         for widget in widgets:
             widget.configure(state=state)
 
         text_color = "white" if state == "normal" else "gray"
-        for label in [self.p4d_motion_label, self.p4d_sweep_label, self.p4d_z_label, self.p4d_angle_label]:
+        self.p4d_motion.configure(text_color=text_color)
+        for label in [self.p4d_motion_label, self.p4d_sweep_label, self.p4d_z_label]:
             label.configure(text_color=text_color)
         self.p4d_note.configure(text_color="gray")
 
@@ -520,7 +647,6 @@ class CubeSimulator(ctk.CTk):
         try:
             sweep_cm = float(self.p4d_sweep_cm_var.get())
             z_slices = int(self.p4d_z_slices_var.get())
-            fan_angle_deg = float(self.p4d_fan_angle_var.get())
         except ValueError as exc:
             raise RuntimeError("Los parametros de Pseudo 4D deben ser numericos.") from exc
 
@@ -528,14 +654,12 @@ class CubeSimulator(ctk.CTk):
             raise RuntimeError("El barrido simulado debe ser mayor que 0 cm.")
         if z_slices < 2:
             raise RuntimeError("Pseudo 4D necesita al menos 2 posiciones en Z.")
-        if fan_angle_deg < 0:
-            raise RuntimeError("La apertura de abanico no puede ser negativa.")
 
         return {
-            "motion_type": self.p4d_motion_var.get(),
+            "motion_type": "Lineal",
             "sweep_cm": sweep_cm,
             "z_slices": z_slices,
-            "fan_angle_deg": fan_angle_deg,
+            "fan_angle_deg": 0.0,
         }
 
     def iniciar_proceso(self):
@@ -573,7 +697,6 @@ class CubeSimulator(ctk.CTk):
                     f"Tamano frame: {summary.frame_size[0]} x {summary.frame_size[1]}",
                     f"Movimiento: {summary.motion_type}",
                     f"Barrido simulado: {summary.sweep_cm} cm",
-                    f"Apertura abanico: +/- {summary.fan_angle_deg} grados",
                 ]
                 messagebox.showinfo("Exito", "\n".join(lines))
                 self._refresh_status(f"Exportado: {os.path.basename(summary.output_dir)}")

@@ -324,13 +324,15 @@ def enforce_opus_limits(
 def _synthetic_linear_transform(frame: np.ndarray, position: float, sweep_cm: float) -> np.ndarray:
     h, w = frame.shape[:2]
     shift_x = position * max(6.0, 0.035 * w + sweep_cm * 6.0)
-    shift_y = position * max(2.0, 0.008 * h)
-    matrix = np.float32([[1.0, 0.0, shift_x], [0.0, 1.0, shift_y]])
+    matrix = np.float32([[1.0, 0.0, shift_x], [0.0, 1.0, 0.0]])
     return cv2.warpAffine(frame, matrix, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
 
 
 def _synthetic_fan_transform(frame: np.ndarray, position: float, fan_angle_deg: float, sweep_cm: float) -> np.ndarray:
     h, w = frame.shape[:2]
+    if abs(fan_angle_deg) < 1e-6:
+        return _synthetic_linear_transform(frame, position, sweep_cm)
+
     pivot = (w / 2.0, max(10.0, 0.18 * h))
     angle = position * fan_angle_deg
     matrix = cv2.getRotationMatrix2D(pivot, angle, 1.0)
@@ -346,8 +348,8 @@ def apply_synthetic_probe_motion(
     sweep_cm: float,
     fan_angle_deg: float,
 ) -> np.ndarray:
-    if motion_type.lower().startswith("aban"):
-        return _synthetic_fan_transform(frame, position, fan_angle_deg, sweep_cm)
+    # Pseudo 4D stays on the linear path for now to keep Z navigation predictable.
+    del motion_type, fan_angle_deg
     return _synthetic_linear_transform(frame, position, sweep_cm)
 
 
@@ -421,6 +423,8 @@ def build_pseudo4d_volume(
     fan_angle_deg: float,
     progress_callback: Callable[[float], None] | None = None,
 ) -> np.ndarray:
+    motion_type = "Lineal"
+    fan_angle_deg = 0.0
     if z_slices < 2:
         raise RuntimeError("Pseudo 4D necesita al menos 2 slices sinteticos en Z.")
 
@@ -457,6 +461,8 @@ def export_pseudo4d_clips(
     progress_callback: Callable[[float], None] | None = None,
 ) -> Pseudo4DClipSummary:
     logger = get_logger()
+    motion_type = "Lineal"
+    fan_angle_deg = 0.0
     frames, _, _ = extract_processed_frames(
         video_path=video_path,
         crop_roi=crop_roi,
