@@ -79,6 +79,8 @@ class CubeSimulator(ctk.CTk):
         self.p4d_motion_var = ctk.StringVar(value="Lineal")
         self.p4d_sweep_cm_var = ctk.StringVar(value=str(self.cfg.get("p4d_sweep_cm", "2.0")))
         self.p4d_z_slices_var = ctk.StringVar(value=str(self.cfg.get("p4d_z_slices", "40")))
+        self.p4d_clip_duration_var = ctk.StringVar(value=str(self.cfg.get("p4d_clip_duration_s", "2.0")))
+        self.p4d_clip_start_var = ctk.StringVar(value=str(self.cfg.get("p4d_clip_start_pct", "50")))
 
         self.label_titulo = ctk.CTkLabel(self, text="CUBE SIMULATOR", font=("Roboto", 28, "bold"))
         self.label_titulo.pack(pady=(18, 8))
@@ -121,6 +123,16 @@ class CubeSimulator(ctk.CTk):
         self.p4d_z_entry = ctk.CTkEntry(self.p4d_frame, textvariable=self.p4d_z_slices_var, width=120)
         self.p4d_z_entry.grid(row=2, column=3, sticky="w", padx=12, pady=6)
 
+        self.p4d_clip_label = ctk.CTkLabel(self.p4d_frame, text="Duracion microclip (s)")
+        self.p4d_clip_label.grid(row=3, column=0, sticky="w", padx=12, pady=6)
+        self.p4d_clip_entry = ctk.CTkEntry(self.p4d_frame, textvariable=self.p4d_clip_duration_var, width=120)
+        self.p4d_clip_entry.grid(row=3, column=1, sticky="w", padx=12, pady=6)
+
+        self.p4d_start_label = ctk.CTkLabel(self.p4d_frame, text="Inicio microclip (%)")
+        self.p4d_start_label.grid(row=3, column=2, sticky="w", padx=12, pady=6)
+        self.p4d_start_entry = ctk.CTkEntry(self.p4d_frame, textvariable=self.p4d_clip_start_var, width=120)
+        self.p4d_start_entry.grid(row=3, column=3, sticky="w", padx=12, pady=6)
+
         self.p4d_note = ctk.CTkLabel(
             self.p4d_frame,
             text="Paso actual: Pseudo 4D conserva el movimiento temporal del video base y crea clips por posicion Z con desplazamiento lineal.",
@@ -128,7 +140,7 @@ class CubeSimulator(ctk.CTk):
             justify="left",
             wraplength=760,
         )
-        self.p4d_note.grid(row=3, column=0, columnspan=4, sticky="w", padx=12, pady=(4, 12))
+        self.p4d_note.grid(row=4, column=0, columnspan=4, sticky="w", padx=12, pady=(4, 12))
 
         self.status_label = ctk.CTkLabel(self, text="Inicializando...", text_color="gray")
         self.status_label.pack(pady=4)
@@ -197,7 +209,7 @@ class CubeSimulator(ctk.CTk):
         self._refresh_status()
 
     def _bind_preference_events(self):
-        for variable in [self.p4d_sweep_cm_var, self.p4d_z_slices_var]:
+        for variable in [self.p4d_sweep_cm_var, self.p4d_z_slices_var, self.p4d_clip_duration_var, self.p4d_clip_start_var]:
             variable.trace_add("write", lambda *_: self._save_preferences())
 
     def _refresh_status(self, extra_message: str | None = None):
@@ -214,6 +226,8 @@ class CubeSimulator(ctk.CTk):
         self.cfg["p4d_motion"] = "Lineal"
         self.cfg["p4d_sweep_cm"] = self.p4d_sweep_cm_var.get()
         self.cfg["p4d_z_slices"] = self.p4d_z_slices_var.get()
+        self.cfg["p4d_clip_duration_s"] = self.p4d_clip_duration_var.get()
+        self.cfg["p4d_clip_start_pct"] = self.p4d_clip_start_var.get()
         self.cfg["p4d_fan_angle_deg"] = "0"
         if getattr(self, "WORKSPACE_DIR", None):
             self.cfg["workspace_dir"] = self.WORKSPACE_DIR
@@ -448,13 +462,13 @@ class CubeSimulator(ctk.CTk):
         self._refresh_status()
 
     def _set_p4d_controls_state(self, state: str):
-        widgets = [self.p4d_sweep_entry, self.p4d_z_entry]
+        widgets = [self.p4d_sweep_entry, self.p4d_z_entry, self.p4d_clip_entry, self.p4d_start_entry]
         for widget in widgets:
             widget.configure(state=state)
 
         text_color = "white" if state == "normal" else "gray"
         self.p4d_motion.configure(text_color=text_color)
-        for label in [self.p4d_motion_label, self.p4d_sweep_label, self.p4d_z_label]:
+        for label in [self.p4d_motion_label, self.p4d_sweep_label, self.p4d_z_label, self.p4d_clip_label, self.p4d_start_label]:
             label.configure(text_color=text_color)
         self.p4d_note.configure(text_color="gray")
 
@@ -647,6 +661,8 @@ class CubeSimulator(ctk.CTk):
         try:
             sweep_cm = float(self.p4d_sweep_cm_var.get())
             z_slices = int(self.p4d_z_slices_var.get())
+            clip_duration_s = float(self.p4d_clip_duration_var.get())
+            clip_start_pct = float(self.p4d_clip_start_var.get())
         except ValueError as exc:
             raise RuntimeError("Los parametros de Pseudo 4D deben ser numericos.") from exc
 
@@ -654,11 +670,17 @@ class CubeSimulator(ctk.CTk):
             raise RuntimeError("El barrido simulado debe ser mayor que 0 cm.")
         if z_slices < 2:
             raise RuntimeError("Pseudo 4D necesita al menos 2 posiciones en Z.")
+        if clip_duration_s < 0.2:
+            raise RuntimeError("La duracion del microclip debe ser al menos 0.2 s.")
+        if clip_start_pct < 0 or clip_start_pct > 100:
+            raise RuntimeError("El inicio del microclip debe estar entre 0 y 100%.")
 
         return {
             "motion_type": "Lineal",
             "sweep_cm": sweep_cm,
             "z_slices": z_slices,
+            "clip_duration_s": clip_duration_s,
+            "clip_start_pct": clip_start_pct,
             "fan_angle_deg": 0.0,
         }
 
@@ -684,6 +706,8 @@ class CubeSimulator(ctk.CTk):
                     sweep_cm=params["sweep_cm"],
                     z_slices=params["z_slices"],
                     fan_angle_deg=params["fan_angle_deg"],
+                    clip_duration_s=params["clip_duration_s"],
+                    clip_start_pct=params["clip_start_pct"],
                     progress_callback=self._set_progress,
                 )
                 self.progressbar.set(1.0)
@@ -692,6 +716,8 @@ class CubeSimulator(ctk.CTk):
                     "",
                     f"Manifest: {summary.manifest_path}",
                     f"Clips: {summary.clip_count}",
+                    f"Duracion microclip: {summary.clip_duration_s:.2f} s",
+                    f"Inicio microclip: {summary.clip_start_pct:.1f}%",
                     f"Frames por clip: {summary.frames_per_clip}",
                     f"FPS: {summary.fps:.2f}",
                     f"Tamano frame: {summary.frame_size[0]} x {summary.frame_size[1]}",

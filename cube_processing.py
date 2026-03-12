@@ -40,6 +40,8 @@ class Pseudo4DClipSummary:
     motion_type: str
     sweep_cm: float
     fan_angle_deg: float
+    clip_duration_s: float
+    clip_start_pct: float
 
 
 def app_log_path() -> str:
@@ -405,12 +407,13 @@ def write_clip(path: str, frames: list[np.ndarray], fps: float) -> None:
         writer.release()
 
 
-def _sample_clip_frames(frames: list[np.ndarray], frames_per_clip: int) -> list[np.ndarray]:
+def _sample_clip_frames(frames: list[np.ndarray], frames_per_clip: int, clip_start_pct: float) -> list[np.ndarray]:
     if frames_per_clip >= len(frames):
         return [frame.copy() for frame in frames]
 
-    # Preserve the original temporal behavior by taking a contiguous window.
-    start_idx = max(0, (len(frames) - frames_per_clip) // 2)
+    max_start = max(0, len(frames) - frames_per_clip)
+    start_ratio = float(np.clip(clip_start_pct, 0.0, 100.0)) / 100.0
+    start_idx = int(round(max_start * start_ratio))
     end_idx = start_idx + frames_per_clip
     return [frame.copy() for frame in frames[start_idx:end_idx]]
 
@@ -458,6 +461,7 @@ def export_pseudo4d_clips(
     z_slices: int,
     fan_angle_deg: float,
     clip_duration_s: float = 2.0,
+    clip_start_pct: float = 50.0,
     progress_callback: Callable[[float], None] | None = None,
 ) -> Pseudo4DClipSummary:
     logger = get_logger()
@@ -472,7 +476,7 @@ def export_pseudo4d_clips(
     )
     fps = read_source_fps(video_path)
     frames_per_clip = max(2, int(round(fps * clip_duration_s)))
-    base_clip = _sample_clip_frames(frames, frames_per_clip)
+    base_clip = _sample_clip_frames(frames, frames_per_clip, clip_start_pct)
 
     clips_dir = os.path.join(output_dir, "clips")
     os.makedirs(clips_dir, exist_ok=True)
@@ -517,6 +521,7 @@ def export_pseudo4d_clips(
         "z_slices": z_slices,
         "fps": fps,
         "clip_duration_s": clip_duration_s,
+        "clip_start_pct": clip_start_pct,
         "frames_per_clip": frames_per_clip,
         "frame_size": [w_ref, h_ref],
         "spatial_blend": "neighbor_weighted",
@@ -527,7 +532,7 @@ def export_pseudo4d_clips(
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
     logger.info(
-        "Exported Pseudo4D clips %s clips=%s fps=%s frames_per_clip=%s motion=%s sweep_cm=%s fan_angle_deg=%s",
+        "Exported Pseudo4D clips %s clips=%s fps=%s frames_per_clip=%s motion=%s sweep_cm=%s fan_angle_deg=%s clip_start_pct=%s",
         output_dir,
         z_slices,
         fps,
@@ -535,6 +540,7 @@ def export_pseudo4d_clips(
         motion_type,
         sweep_cm,
         fan_angle_deg,
+        clip_start_pct,
     )
 
     return Pseudo4DClipSummary(
@@ -548,6 +554,8 @@ def export_pseudo4d_clips(
         motion_type=motion_type,
         sweep_cm=sweep_cm,
         fan_angle_deg=fan_angle_deg,
+        clip_duration_s=clip_duration_s,
+        clip_start_pct=clip_start_pct,
     )
 
 
