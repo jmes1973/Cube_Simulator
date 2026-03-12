@@ -351,6 +351,37 @@ def apply_synthetic_probe_motion(
     return _synthetic_linear_transform(frame, position, sweep_cm)
 
 
+def smooth_position(z_idx: int, z_slices: int) -> float:
+    if z_slices <= 1:
+        return 0.0
+    t = z_idx / float(z_slices - 1)
+    eased = t * t * (3.0 - 2.0 * t)
+    return -1.0 + 2.0 * eased
+
+
+def blend_spatial_neighbors(
+    frame: np.ndarray,
+    position: float,
+    neighbor_step: float,
+    motion_type: str,
+    sweep_cm: float,
+    fan_angle_deg: float,
+) -> np.ndarray:
+    current = apply_synthetic_probe_motion(frame, position, motion_type, sweep_cm, fan_angle_deg).astype(np.float32)
+
+    if neighbor_step <= 0:
+        return current.astype(np.uint8)
+
+    prev_position = max(-1.0, position - neighbor_step)
+    next_position = min(1.0, position + neighbor_step)
+    prev_frame = apply_synthetic_probe_motion(frame, prev_position, motion_type, sweep_cm, fan_angle_deg).astype(np.float32)
+    next_frame = apply_synthetic_probe_motion(frame, next_position, motion_type, sweep_cm, fan_angle_deg).astype(np.float32)
+
+    blended = cv2.addWeighted(current, 0.65, prev_frame, 0.175, 0.0)
+    blended = cv2.addWeighted(blended, 0.825, next_frame, 0.175, 0.0)
+    return np.clip(blended, 0, 255).astype(np.uint8)
+
+
 def write_clip(path: str, frames: list[np.ndarray], fps: float) -> None:
     if not frames:
         raise RuntimeError("No hay frames para escribir el clip.")
@@ -440,20 +471,32 @@ def export_pseudo4d_clips(
     clips_dir = os.path.join(output_dir, "clips")
     os.makedirs(clips_dir, exist_ok=True)
 
-    transformed_clips: list[str] = []
+    transformed_clips: list[dict[str, object]] = []
     h_ref, w_ref = base_clip[0].shape[:2]
+    neighbor_step = 2.0 / max(1, z_slices - 1)
 
     for z_idx in range(z_slices):
-        position = -1.0 + (2.0 * z_idx / max(1, z_slices - 1))
+        position = smooth_position(z_idx, z_slices)
         clip_frames = []
         for frame in base_clip:
-            transformed = apply_synthetic_probe_motion(frame, position, motion_type, sweep_cm, fan_angle_deg)
+            transformed = blend_spatial_neighbors(
+                frame,
+                position=position,
+                neighbor_step=neighbor_step,
+                motion_type=motion_type,
+                sweep_cm=sweep_cm,
+                fan_angle_deg=fan_angle_deg,
+            )
             clip_frames.append(enforce_size(transformed, h_ref, w_ref))
 
         clip_name = f"z_{z_idx:03d}.avi"
         clip_path = os.path.join(clips_dir, clip_name)
         write_clip(clip_path, clip_frames, fps)
-        transformed_clips.append(clip_name)
+        transformed_clips.append({
+            "index": z_idx,
+            "position": round(position, 6),
+            "file": clip_name,
+        })
 
         if progress_callback and z_idx % max(1, z_slices // 50) == 0:
             progress_callback(z_idx / z_slices)
@@ -470,6 +513,7 @@ def export_pseudo4d_clips(
         "clip_duration_s": clip_duration_s,
         "frames_per_clip": frames_per_clip,
         "frame_size": [w_ref, h_ref],
+        "spatial_blend": "neighbor_weighted",
         "clips_dir": "clips",
         "clips": transformed_clips,
     }
