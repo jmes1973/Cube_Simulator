@@ -67,18 +67,19 @@ class CubeSimulator(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.logger = get_logger()
+        self.cfg = load_config()
         self.title("Cube_Simulator - Pseudo 3D / Pseudo 4D")
-        self.geometry("860x760")
+        self.geometry("900x800")
 
         self.video_actual = None
         self.crop_roi = None
         self.mask_rects = []
-        self.mask_mode = "black"
-        self.output_mode_var = ctk.StringVar(value=MODE_PSEUDO_3D)
-        self.p4d_motion_var = ctk.StringVar(value="Abanico")
-        self.p4d_sweep_cm_var = ctk.StringVar(value="2.0")
-        self.p4d_z_slices_var = ctk.StringVar(value="40")
-        self.p4d_fan_angle_var = ctk.StringVar(value="12")
+        self.mask_mode = self.cfg.get("mask_mode", "black")
+        self.output_mode_var = ctk.StringVar(value=self.cfg.get("output_mode", MODE_PSEUDO_3D))
+        self.p4d_motion_var = ctk.StringVar(value=self.cfg.get("p4d_motion", "Abanico"))
+        self.p4d_sweep_cm_var = ctk.StringVar(value=str(self.cfg.get("p4d_sweep_cm", "2.0")))
+        self.p4d_z_slices_var = ctk.StringVar(value=str(self.cfg.get("p4d_z_slices", "40")))
+        self.p4d_fan_angle_var = ctk.StringVar(value=str(self.cfg.get("p4d_fan_angle_deg", "12")))
 
         self.label_titulo = ctk.CTkLabel(self, text="CUBE SIMULATOR", font=("Roboto", 28, "bold"))
         self.label_titulo.pack(pady=(18, 8))
@@ -108,7 +109,7 @@ class CubeSimulator(ctk.CTk):
 
         self.p4d_motion_label = ctk.CTkLabel(self.p4d_frame, text="Movimiento sintetico")
         self.p4d_motion_label.grid(row=1, column=0, sticky="w", padx=12, pady=6)
-        self.p4d_motion = ctk.CTkSegmentedButton(self.p4d_frame, values=["Abanico", "Lineal"], variable=self.p4d_motion_var)
+        self.p4d_motion = ctk.CTkSegmentedButton(self.p4d_frame, values=["Abanico", "Lineal"], variable=self.p4d_motion_var, command=lambda _: self._save_preferences())
         self.p4d_motion.grid(row=1, column=1, columnspan=3, sticky="ew", padx=12, pady=6)
 
         self.p4d_sweep_label = ctk.CTkLabel(self.p4d_frame, text="Barrido simulado (cm)")
@@ -138,6 +139,13 @@ class CubeSimulator(ctk.CTk):
         self.status_label = ctk.CTkLabel(self, text="Inicializando...", text_color="gray")
         self.status_label.pack(pady=4)
 
+        self.workspace_frame = ctk.CTkFrame(self)
+        self.workspace_frame.pack(padx=18, pady=6, fill="x")
+        self.btn_change_workspace = ctk.CTkButton(self.workspace_frame, text="Cambiar workspace", command=self.cambiar_workspace, fg_color="#3F6AA2")
+        self.btn_change_workspace.pack(side="left", padx=8, pady=10)
+        self.btn_open_output = ctk.CTkButton(self.workspace_frame, text="Abrir carpeta de salida", command=self.abrir_carpeta_salida, fg_color="#2F7D4A")
+        self.btn_open_output.pack(side="left", padx=8, pady=10)
+
         self.btn_cargar = ctk.CTkButton(self, text="1. CARGAR MP4 / AVI / DICOM", command=self.seleccionar_archivo)
         self.btn_cargar.pack(pady=10)
 
@@ -150,7 +158,7 @@ class CubeSimulator(ctk.CTk):
         self.btn_masks = ctk.CTkButton(self.frame_tools, text="3. DEFINIR MASCARAS", command=self.definir_mascaras, state="disabled")
         self.btn_masks.pack(side="left", padx=8, pady=10)
 
-        self.mask_mode_var = ctk.StringVar(value="black")
+        self.mask_mode_var = ctk.StringVar(value=self.mask_mode)
         self.opt_black = ctk.CTkRadioButton(
             self.frame_tools,
             text="Tapar (negro)",
@@ -188,12 +196,58 @@ class CubeSimulator(ctk.CTk):
         if not ok:
             return
 
+        self._bind_preference_events()
         self._on_mode_change(self.output_mode_var.get())
-        self.status_label.configure(text=f"Workspace: {self.WORKSPACE_DIR}", text_color="white")
+        self._refresh_status()
+
+    def _bind_preference_events(self):
+        for variable in [self.p4d_sweep_cm_var, self.p4d_z_slices_var, self.p4d_fan_angle_var]:
+            variable.trace_add("write", lambda *_: self._save_preferences())
+
+    def _refresh_status(self, extra_message: str | None = None):
+        parts = [f"Workspace: {self.WORKSPACE_DIR}", f"Modo: {self.output_mode_var.get()}"]
+        if self.video_actual:
+            parts.insert(0, f"Cargado: {os.path.basename(self.video_actual)}")
+        if extra_message:
+            parts.append(extra_message)
+        self.status_label.configure(text=" | ".join(parts), text_color="white")
+
+    def _save_preferences(self):
+        self.cfg["output_mode"] = self.output_mode_var.get()
+        self.cfg["mask_mode"] = self.mask_mode_var.get()
+        self.cfg["p4d_motion"] = self.p4d_motion_var.get()
+        self.cfg["p4d_sweep_cm"] = self.p4d_sweep_cm_var.get()
+        self.cfg["p4d_z_slices"] = self.p4d_z_slices_var.get()
+        self.cfg["p4d_fan_angle_deg"] = self.p4d_fan_angle_var.get()
+        if getattr(self, "WORKSPACE_DIR", None):
+            self.cfg["workspace_dir"] = self.WORKSPACE_DIR
+        save_config(self.cfg)
+
+    def _open_folder(self, path: str):
+        if not os.path.isdir(path):
+            messagebox.showerror("Error", f"La carpeta no existe:\n{path}")
+            return
+        os.startfile(path)
+
+    def cambiar_workspace(self):
+        selected = filedialog.askdirectory(title="Selecciona una nueva carpeta de trabajo (Workspace)")
+        if not selected:
+            return
+        try:
+            self.DATA_DIR, self.OUT_DIR, self.PRESETS_DIR = ensure_workspace_dirs(selected)
+        except Exception as exc:
+            messagebox.showerror("Error", f"No se pudo usar la carpeta seleccionada:\n{exc}")
+            return
+
+        self.WORKSPACE_DIR = selected
+        self._save_preferences()
+        self._refresh_status("Workspace actualizado")
+
+    def abrir_carpeta_salida(self):
+        self._open_folder(self.OUT_DIR)
 
     def _init_workspace(self) -> bool:
-        cfg = load_config()
-        ws = cfg.get("workspace_dir")
+        ws = self.cfg.get("workspace_dir")
 
         if (not ws) or (not os.path.isdir(ws)):
             suggested = default_workspace_dir()
@@ -229,15 +283,9 @@ class CubeSimulator(ctk.CTk):
                 try:
                     ensure_workspace_dirs(ws)
                 except Exception as e2:
-                    messagebox.showerror(
-                        "Error creando carpetas",
-                        f"Tampoco se pudo crear la estructura en:\n{ws}\n\nDetalle:\n{e2}",
-                    )
+                    messagebox.showerror("Error creando carpetas", f"Tampoco se pudo crear la estructura en:\n{ws}\n\nDetalle:\n{e2}")
                     self.destroy()
                     return False
-
-            cfg["workspace_dir"] = ws
-            save_config(cfg)
 
         self.WORKSPACE_DIR = ws
         try:
@@ -247,6 +295,7 @@ class CubeSimulator(ctk.CTk):
             self.destroy()
             return False
 
+        self._save_preferences()
         return True
 
     def _on_mode_change(self, selected_mode: str):
@@ -269,6 +318,9 @@ class CubeSimulator(ctk.CTk):
             self.btn_procesar.configure(text="5. GENERAR PSEUDO 3D (.NRRD)")
             self._set_p4d_controls_state("disabled")
 
+        self._save_preferences()
+        self._refresh_status()
+
     def _set_p4d_controls_state(self, state: str):
         widgets = [self.p4d_motion, self.p4d_sweep_entry, self.p4d_z_entry, self.p4d_angle_entry]
         for widget in widgets:
@@ -281,11 +333,12 @@ class CubeSimulator(ctk.CTk):
 
     def _update_mask_mode(self):
         self.mask_mode = self.mask_mode_var.get()
+        self._save_preferences()
 
     def reset_anon(self):
         self.crop_roi = None
         self.mask_rects = []
-        self.status_label.configure(text="Anonimizacion reiniciada (ROI y mascaras borradas).", text_color="white")
+        self._refresh_status("Anonimizacion reiniciada")
 
     def _leer_frame_medio(self):
         if not self.video_actual:
@@ -316,12 +369,12 @@ class CubeSimulator(ctk.CTk):
         x, y, w, h = map(int, r)
         if w <= 0 or h <= 0:
             self.crop_roi = None
-            self.status_label.configure(text="ROI no definido (cancelado).", text_color="white")
+            self._refresh_status("ROI no definido")
             return
 
         self.crop_roi = (x, y, w, h)
         self.mask_rects = []
-        self.status_label.configure(text=f"ROI definido: x={x}, y={y}, w={w}, h={h} (mascaras reiniciadas).", text_color="white")
+        self._refresh_status(f"ROI definido: x={x}, y={y}, w={w}, h={h}")
 
     def definir_mascaras(self):
         frame = self._leer_frame_medio()
@@ -393,9 +446,9 @@ class CubeSimulator(ctk.CTk):
 
         self.mask_rects = rects
         if rects:
-            self.status_label.configure(text=f"Mascaras definidas: {len(rects)} rectangulo(s).", text_color="white")
+            self._refresh_status(f"Mascaras definidas: {len(rects)}")
         else:
-            self.status_label.configure(text="Mascaras no definidas (cancelado o vacio).", text_color="white")
+            self._refresh_status("Mascaras no definidas")
 
     def preview_resultado(self):
         frame = self._leer_frame_medio()
@@ -445,9 +498,6 @@ class CubeSimulator(ctk.CTk):
         self.video_actual = path
 
         if self.video_actual:
-            base = os.path.basename(self.video_actual)
-            mode = self.output_mode_var.get()
-            self.status_label.configure(text=f"Cargado: {base} | Modo: {mode} | Workspace: {self.WORKSPACE_DIR}", text_color="white")
             self.btn_roi.configure(state="normal")
             self.btn_masks.configure(state="normal")
             self.opt_black.configure(state="normal")
@@ -458,8 +508,9 @@ class CubeSimulator(ctk.CTk):
             self.crop_roi = None
             self.mask_rects = []
             self.progressbar.set(0)
+            self._refresh_status("Archivo cargado")
         else:
-            self.status_label.configure(text=f"Workspace: {self.WORKSPACE_DIR}", text_color="white")
+            self._refresh_status()
 
     def _set_progress(self, value: float):
         self.progressbar.set(value)
@@ -525,7 +576,7 @@ class CubeSimulator(ctk.CTk):
                     f"Apertura abanico: +/- {summary.fan_angle_deg} grados",
                 ]
                 messagebox.showinfo("Exito", "\n".join(lines))
-                self.status_label.configure(text=f"Exportado: {os.path.basename(summary.output_dir)}", text_color="white")
+                self._refresh_status(f"Exportado: {os.path.basename(summary.output_dir)}")
                 return
 
             output_path = os.path.join(self.OUT_DIR, base_sin_ext + ".nrrd")
@@ -551,7 +602,7 @@ class CubeSimulator(ctk.CTk):
                 lines.extend(["", "Compatibilidad OPUS aplicada automaticamente.", f"Motivo: {summary.resize_reason}"])
 
             messagebox.showinfo("Exito", "\n".join(lines))
-            self.status_label.configure(text=f"Exportado: {os.path.basename(summary.output_path)}", text_color="white")
+            self._refresh_status(f"Exportado: {os.path.basename(summary.output_path)}")
         except Exception as e:
             self.logger.exception("Error procesando %s", self.video_actual)
             messagebox.showerror("Error", f"{e}\n\nSe guardo detalle tecnico en:\n{app_log_path()}")
