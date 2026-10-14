@@ -559,6 +559,53 @@ def export_pseudo4d_clips(
     )
 
 
+
+@dataclass
+class AVIExportSummary:
+    output_path: str
+    frame_count: int
+    fps: float
+    frame_size: tuple[int, int]
+    codec: str = "MJPG"
+
+
+def export_anonymized_avi(
+    video_path: str,
+    output_path: str,
+    crop_roi: tuple[int, int, int, int] | None,
+    mask_rects: list[tuple[int, int, int, int]],
+    mask_mode: str,
+    progress_callback: Callable[[float], None] | None = None,
+) -> AVIExportSummary:
+    """Export the complete anonymized sequence as AVI without stacking frames."""
+    frames, _, _ = extract_processed_frames(
+        video_path=video_path,
+        crop_roi=crop_roi,
+        mask_rects=mask_rects,
+        mask_mode=mask_mode,
+        progress_callback=progress_callback,
+    )
+    if not frames:
+        raise RuntimeError("No se encontraron fotogramas validos para exportar.")
+    fps = read_source_fps(video_path)
+    height, width = frames[0].shape[:2]
+    write_clip(output_path, frames, fps)
+    check = cv2.VideoCapture(output_path)
+    try:
+        if not check.isOpened():
+            raise RuntimeError("El AVI exportado no se puede abrir.")
+        ok, _ = check.read()
+        if not ok:
+            raise RuntimeError("El AVI exportado no contiene fotogramas legibles.")
+    finally:
+        check.release()
+    if progress_callback:
+        progress_callback(1.0)
+    get_logger().info("Exported anonymized AVI %s frames=%s fps=%s size=%sx%s codec=MJPG",
+                      output_path, len(frames), fps, width, height)
+    return AVIExportSummary(output_path, len(frames), fps, (width, height))
+
+
 def write_nrrd(output_path: str, volume: np.ndarray, encoding: str = DEFAULT_NRRD_ENCODING) -> None:
     header = {
         "type": "uint8",
