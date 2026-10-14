@@ -2,8 +2,9 @@
 
 Aplicacion de escritorio en Python para convertir videos ecograficos en salidas orientadas a simulacion educativa.
 
-Actualmente el proyecto soporta dos flujos principales:
+Actualmente el proyecto soporta tres flujos principales:
 
+- `AVI anonimizado`: aplica ROI y máscaras a la secuencia completa y guarda un `.avi` en MJPG, conservando la frecuencia de cuadros de origen. Esta salida se encuentra pendiente de validación en OPUS.
 - `Pseudo 3D`: convierte una secuencia `AVI` / `MP4` / `DICOM` en un volumen `.nrrd` navegable y aplica compatibilidad automatica para OPUS cuando el caso es demasiado grande.
 - `Pseudo 4D`: genera un dataset de micro clips por posicion `Z` a partir del video base, pensado para simulacion dinamica en un simulador externo.
 
@@ -23,6 +24,7 @@ Casos de uso esperados:
 - Carga de archivos `AVI`, `MP4` y `DICOM`
 - Definicion manual de ROI
 - Definicion manual de mascaras para anonimizar overlays o texto
+- Exportacion AVI anonimizado (MJPG), con FPS de origen. Debe inspeccionarse el video completo para verificar que no haya identificadores.
 - Exportacion `Pseudo 3D` a `.nrrd`
 - Reduccion automatica de volumen para mejorar compatibilidad con OPUS
 - Exportacion `Pseudo 4D` a carpeta con:
@@ -102,3 +104,11 @@ Antes de subir a GitHub conviene versionar solo codigo y configuracion, no:
 - datasets de entrada
 - salidas generadas
 - archivos temporales o caches
+
+## Exportación AVI (prueba experimental)
+
+Selecciona `AVI anonimizado`, carga AVI / MP4 / DICOM, define el ROI y las máscaras, y exporta desde el botón 5. El archivo termina en `_anonimizado_MJPG.avi` dentro de `output_volumes/`.
+
+La salida conserva todos los fotogramas procesados y los FPS originales de videos AVI/MP4. En DICOM, el valor FPS se estima si no hay información temporal disponible. La compresión MJPG no es sin pérdida. La compatibilidad de este AVI con reproducción temporal en OPUS **no está comprobada**; importar AVI como volumen no garantiza reproducción automática de un cine loop.
+
+**Privacidad:** la anonimización es manual mediante ROI/máscaras; revisar todos los fotogramas del resultado antes de divulgar. No subir videos o estudios con datos del paciente a GitHub.
