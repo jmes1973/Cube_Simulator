@@ -11,6 +11,7 @@ from cube_processing import (
     app_log_path,
     apply_anonymization,
     export_pseudo4d_clips,
+    export_anonymized_avi,
     get_logger,
     process_to_nrrd,
     read_middle_frame,
@@ -22,6 +23,7 @@ ctk.set_default_color_theme("blue")
 
 MODE_PSEUDO_3D = "Pseudo 3D"
 MODE_PSEUDO_4D = "Pseudo 4D"
+MODE_ANON_AVI = "AVI anonimizado"
 
 
 def appdata_config_path():
@@ -93,7 +95,7 @@ class CubeSimulator(ctk.CTk):
 
         self.mode_switch = ctk.CTkSegmentedButton(
             self.mode_frame,
-            values=[MODE_PSEUDO_3D, MODE_PSEUDO_4D],
+            values=[MODE_PSEUDO_3D, MODE_PSEUDO_4D, MODE_ANON_AVI],
             variable=self.output_mode_var,
             command=self._on_mode_change,
         )
@@ -448,6 +450,10 @@ class CubeSimulator(ctk.CTk):
             )
             self.btn_procesar.configure(text="5. GENERAR PSEUDO 4D (CLIPS)")
             self._set_p4d_controls_state("normal")
+        elif selected_mode == MODE_ANON_AVI:
+            self.mode_hint.configure(text="AVI anonimizado: conserva los fotogramas y FPS de origen; exporta AVI con codec MJPG, sin convertir a NRRD.")
+            self.btn_procesar.configure(text="5. EXPORTAR AVI ANONIMIZADO (MJPG)")
+            self._set_p4d_controls_state("disabled")
         else:
             self.mode_hint.configure(
                 text=(
@@ -693,6 +699,23 @@ class CubeSimulator(ctk.CTk):
         base_sin_ext = os.path.splitext(nombre_base)[0]
 
         try:
+            if self.output_mode_var.get() == MODE_ANON_AVI:
+                output_path = os.path.join(self.OUT_DIR, base_sin_ext + "_anonimizado_MJPG.avi")
+                summary = export_anonymized_avi(
+                    video_path=self.video_actual,
+                    output_path=output_path,
+                    crop_roi=self.crop_roi,
+                    mask_rects=self.mask_rects,
+                    mask_mode=self.mask_mode,
+                    progress_callback=self._set_progress,
+                )
+                self.progressbar.set(1.0)
+                messagebox.showinfo("AVI exportado",
+                    f"Archivo: {summary.output_path}\nFotogramas: {summary.frame_count}\\nFPS: {summary.fps:.2f}\\n"
+                    f"Resolucion: {summary.frame_size[0]} x {summary.frame_size[1]}\\nCodec: {summary.codec}\\n\\n"
+                    "IMPORTANTE: revise todo el video para descartar datos identificatorios antes de compartirlo.")
+                self._refresh_status(f"Exportado: {os.path.basename(summary.output_path)}")
+                return
             if self.output_mode_var.get() == MODE_PSEUDO_4D:
                 params = self._get_pseudo4d_params()
                 output_dir = os.path.join(self.OUT_DIR, base_sin_ext + "_pseudo4d")
