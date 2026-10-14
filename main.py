@@ -711,9 +711,9 @@ class CubeSimulator(ctk.CTk):
                 )
                 self.progressbar.set(1.0)
                 messagebox.showinfo("AVI exportado",
-                    f"Archivo: {summary.output_path}\nFotogramas: {summary.frame_count}\\nFPS: {summary.fps:.2f}\\n"
-                    f"Resolucion: {summary.frame_size[0]} x {summary.frame_size[1]}\\nCodec: {summary.codec}\\n\\n"
-                    "IMPORTANTE: revise todo el video para descartar datos identificatorios antes de compartirlo.")
+                    f"Archivo: {summary.output_path}\nFotogramas: {summary.frame_count}\nFPS: {summary.fps:.2f}\n"
+                    f"Resolucion: {summary.frame_size[0]} x {summary.frame_size[1]}\nCodec: {summary.codec}\n\n"
+                    "IMPORTANTE: revise todos los fotogramas para confirmar que no haya datos del paciente.")
                 self._refresh_status(f"Exportado: {os.path.basename(summary.output_path)}")
                 return
             if self.output_mode_var.get() == MODE_PSEUDO_4D:
