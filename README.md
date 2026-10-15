@@ -127,3 +127,11 @@ En `OPUS 4D (test)`, configurar **Intervalos=32**, **Inicio=0%**, **Fin=100%**; 
 Con un AVI de 225 cuadros a 35 FPS, cada fase contiene 225 cuadros con desplazamiento circular de un cuadro respecto a la anterior; con sonda fija se recorren 32 instantes vecinos, no todo el AVI. Para 32 fases a una cadencia teórica de 35 intervalos/segundo, el valor equivalente es 65,625 BPM (una vuelta de 32 fases cada 0,914 segundos), **sujeto a verificación en OPUS**. BPM representa ciclos/minuto, no FPS. Para cubrir 225 instantes con sonda fija harían falta 225 intervalos, mucho más costosos en almacenamiento y potencialmente no admitidos por OPUS.
 
 **Limitación:** Esta estrategia reutiliza vídeo temporal como si fueran cortes espaciales; su validez es exclusivamente experimental y pedagógica, no anatómica o diagnóstica. Están pendientes pruebas integrales de interfaz en Windows y límites de OPUS. Se mantiene el aviso sobre previsualización.
+
+## Prueba V5: 225 intervalos
+
+El modo `OPUS 4D (test)` ahora acepta de 2 a **225** intervalos. Para usar el AVI completo de 225 fotogramas, configurar `Intervalos=225`, `Inicio=0`, `Fin=100`. Los parámetros guardados de una ejecución anterior (por ejemplo, 32) pueden seguir apareciendo: cambiarlos manualmente. La salida se genera en `*_opus4d_225_intervalos` para no sobrescribir pruebas previas.
+
+Se generan **225 videos de 225 cuadros** (50.625 cuadros codificados en total) y un archivo TXT. Pueden consumir mucho espacio y tiempo. A 8 segundos por intervalo dentro de OPUS, la construcción del STY tomaría **aproximadamente 30 minutos**, sin contar la exportación de Cube Simulator. La velocidad de reproducción de todos los 225 cuadros a 35 cuadros/s correspondería teóricamente a unos **9,33 BPM** (una vuelta cada 6,43 s), pero OPUS podría limitar el rango, truncar intervalos o interpretar BPM de modo distinto: validarlo.
+
+El último intervalo vuelve al primero abruptamente si el AVI original no termina con un estado que conecte bien con el inicial; 225 fases **no eliminan por sí mismas** ese salto. No se crean datos 4D espaciales reales.
