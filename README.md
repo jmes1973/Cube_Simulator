@@ -112,3 +112,11 @@ Selecciona `AVI anonimizado`, carga AVI / MP4 / DICOM, define el ROI y las másc
 La salida conserva todos los fotogramas procesados y los FPS originales de videos AVI/MP4. En DICOM, el valor FPS se estima si no hay información temporal disponible. La compresión MJPG no es sin pérdida. La compatibilidad de este AVI con reproducción temporal en OPUS **no está comprobada**; importar AVI como volumen no garantiza reproducción automática de un cine loop.
 
 **Privacidad:** la anonimización es manual mediante ROI/máscaras; revisar todos los fotogramas del resultado antes de divulgar. No subir videos o estudios con datos del paciente a GitHub.
+
+## Preparar OPUS 4D (prueba experimental)
+
+Modo `OPUS 4D (test)`: carga el AVI original o anonimizado, conserva ROI/mascaras elegidos y crea una carpeta `*_opus4d_test` con ocho archivos `Intervalo_01.avi` a `Intervalo_08.avi` y un `OPUS_Create_4D.txt` con sus nombres. Importa el TXT mediante `Info > Academic > Course Creator > Create 4D Volume` de OPUS. Se produce un STY de varios intervalos.
+
+Cada archivo tiene el mismo numero de fotogramas y desplazamiento circular de 1 fotograma respecto al anterior. El material **no** representa volumenes 3D reales de un mismo instante y no esta validado para simulacion anatomica o diagnostico. Se debe observar si el cambio de intervalo muestra movimiento mas continuo que el experimento de brillo y detectar discontinuidades. Si los datos deben anonimizarse, revisar todos los fotogramas de salida antes de compartirlos.
+
+La pantalla de previsualizacion OpenCV aun puede bloquearse si se cierra con X; evitar usarla en esta prueba.
