@@ -652,7 +652,7 @@ def prepare_opus4d_intervals(
             progress_callback((phase + 1) / interval_count)
     list_path = os.path.join(output_dir, "OPUS_Create_4D.txt")
     with open(list_path, "w", encoding="utf-8") as file:
-        file.write("\\n".join(names) + "\\n")
+        file.write("\n".join(names) + "\n")
     get_logger().info(
         "Prepared experimental OPUS 4D intervals dir=%s n=%s frames=%s fps=%s",
         output_dir, interval_count, count, fps
