@@ -86,6 +86,10 @@ class CubeSimulator(ctk.CTk):
         self.p4d_clip_duration_var = ctk.StringVar(value=str(self.cfg.get("p4d_clip_duration_s", "2.0")))
         self.p4d_clip_start_var = ctk.StringVar(value=str(self.cfg.get("p4d_clip_start_pct", "50")))
 
+        self.opus_intervals_var = ctk.StringVar(value=str(self.cfg.get("opus_intervals", "32")))
+        self.opus_start_var = ctk.StringVar(value=str(self.cfg.get("opus_start_pct", "0")))
+        self.opus_end_var = ctk.StringVar(value=str(self.cfg.get("opus_end_pct", "100")))
+
         self.label_titulo = ctk.CTkLabel(self, text="CUBE SIMULATOR", font=("Roboto", 28, "bold"))
         self.label_titulo.pack(pady=(18, 8))
 
@@ -105,6 +109,15 @@ class CubeSimulator(ctk.CTk):
 
         self.mode_hint = ctk.CTkLabel(self.mode_frame, text="", text_color="gray", justify="left")
         self.mode_hint.pack(anchor="w", padx=14, pady=(2, 12))
+
+        self.opus_frame = ctk.CTkFrame(self.mode_frame)
+        self.opus_frame.pack(fill="x", padx=12, pady=(0, 12))
+        ctk.CTkLabel(self.opus_frame, text="Intervalos (2-64)").grid(row=0, column=0, padx=10, pady=8)
+        ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_intervals_var).grid(row=0, column=1, padx=8, pady=8)
+        ctk.CTkLabel(self.opus_frame, text="Inicio (%)").grid(row=0, column=2, padx=8)
+        ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_start_var).grid(row=0, column=3, padx=8)
+        ctk.CTkLabel(self.opus_frame, text="Fin (%)").grid(row=0, column=4, padx=8)
+        ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_end_var).grid(row=0, column=5, padx=8)
 
         self.p4d_frame = ctk.CTkFrame(self.mode_frame)
         self.p4d_frame.pack(fill="x", padx=12, pady=(0, 12))
@@ -225,6 +238,9 @@ class CubeSimulator(ctk.CTk):
         self.status_label.configure(text=" | ".join(parts), text_color="white")
 
     def _save_preferences(self):
+        self.cfg["opus_intervals"] = self.opus_intervals_var.get()
+        self.cfg["opus_start_pct"] = self.opus_start_var.get()
+        self.cfg["opus_end_pct"] = self.opus_end_var.get()
         self.cfg["output_mode"] = self.output_mode_var.get()
         self.cfg["mask_mode"] = self.mask_mode_var.get()
         self.cfg["p4d_motion"] = "Lineal"
@@ -443,6 +459,10 @@ class CubeSimulator(ctk.CTk):
         return True
 
     def _on_mode_change(self, selected_mode: str):
+        if selected_mode == MODE_OPUS_4D:
+            self.opus_frame.pack(fill="x", padx=12, pady=(0, 12), before=self.p4d_frame)
+        else:
+            self.opus_frame.pack_forget()
         if selected_mode == MODE_PSEUDO_4D:
             self.mode_hint.configure(
                 text=(
@@ -453,8 +473,8 @@ class CubeSimulator(ctk.CTk):
             self.btn_procesar.configure(text="5. GENERAR PSEUDO 4D (CLIPS)")
             self._set_p4d_controls_state("normal")
         elif selected_mode == MODE_OPUS_4D:
-            self.mode_hint.configure(text="Experimental: genera 8 AVI con desfase temporal y un TXT para Create 4D Volume en OPUS. No es reconstruccion 3D real.")
-            self.btn_procesar.configure(text="5. PREPARAR OPUS 4D (8 AVI + TXT)")
+            self.mode_hint.configure(text="Experimental: genera intervalos temporales AVI y TXT para OPUS. Los fotogramas no son cortes 3D reales.")
+            self.btn_procesar.configure(text="5. PREPARAR OPUS 4D (AVI + TXT)")
             self._set_p4d_controls_state("disabled")
         elif selected_mode == MODE_ANON_AVI:
             self.mode_hint.configure(text="AVI anonimizado: conserva los fotogramas y FPS de origen; exporta AVI con codec MJPG, sin convertir a NRRD.")
@@ -706,14 +726,20 @@ class CubeSimulator(ctk.CTk):
 
         try:
             if self.output_mode_var.get() == MODE_OPUS_4D:
-                output_dir = os.path.join(self.OUT_DIR, base_sin_ext + "_opus4d_test")
+                output_dir = os.path.join(self.OUT_DIR, base_sin_ext + "_opus4d_nuevo")
+                intervals = int(self.opus_intervals_var.get())
+                start_pct = float(self.opus_start_var.get())
+                end_pct = float(self.opus_end_var.get())
+                self._save_preferences()
                 summary = prepare_opus4d_intervals(
                     video_path=self.video_actual,
                     output_dir=output_dir,
                     crop_roi=self.crop_roi,
                     mask_rects=self.mask_rects,
                     mask_mode=self.mask_mode,
-                    interval_count=8,
+                    interval_count=intervals,
+                    start_pct=start_pct,
+                    end_pct=end_pct,
                     progress_callback=self._set_progress,
                 )
                 messagebox.showinfo(
