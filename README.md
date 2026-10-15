@@ -120,3 +120,10 @@ Modo `OPUS 4D (test)`: carga el AVI original o anonimizado, conserva ROI/mascara
 Cada archivo tiene el mismo numero de fotogramas y desplazamiento circular de 1 fotograma respecto al anterior. El material **no** representa volumenes 3D reales de un mismo instante y no esta validado para simulacion anatomica o diagnostico. Se debe observar si el cambio de intervalo muestra movimiento mas continuo que el experimento de brillo y detectar discontinuidades. Si los datos deben anonimizarse, revisar todos los fotogramas de salida antes de compartirlos.
 
 La pantalla de previsualizacion OpenCV aun puede bloquearse si se cierra con X; evitar usarla en esta prueba.
+
+## Prueba de 32 fases (octubre 2026)
+En `OPUS 4D (test)`, configurar **Intervalos=32**, **Inicio=0%**, **Fin=100%**; cargar el AVI anonimizado y generar. Se escriben 32 AVI del mismo tamaño y el TXT válido con una ruta relativa por línea, en la carpeta `*_opus4d_nuevo`. OPUS: `Info > Academic > Course Creator > Create 4D Volume`.
+
+Con un AVI de 225 cuadros a 35 FPS, cada fase contiene 225 cuadros con desplazamiento circular de un cuadro respecto a la anterior; con sonda fija se recorren 32 instantes vecinos, no todo el AVI. Para 32 fases a una cadencia teórica de 35 intervalos/segundo, el valor equivalente es 65,625 BPM (una vuelta de 32 fases cada 0,914 segundos), **sujeto a verificación en OPUS**. BPM representa ciclos/minuto, no FPS. Para cubrir 225 instantes con sonda fija harían falta 225 intervalos, mucho más costosos en almacenamiento y potencialmente no admitidos por OPUS.
+
+**Limitación:** Esta estrategia reutiliza vídeo temporal como si fueran cortes espaciales; su validez es exclusivamente experimental y pedagógica, no anatómica o diagnóstica. Están pendientes pruebas integrales de interfaz en Windows y límites de OPUS. Se mantiene el aviso sobre previsualización.
