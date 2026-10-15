@@ -606,6 +606,60 @@ def export_anonymized_avi(
     return AVIExportSummary(output_path, len(frames), fps, (width, height))
 
 
+
+@dataclass
+class OPUS4DPreparationSummary:
+    output_dir: str
+    list_path: str
+    interval_count: int
+    frames_per_interval: int
+    fps: float
+
+
+def prepare_opus4d_intervals(
+    video_path: str,
+    output_dir: str,
+    crop_roi: tuple[int, int, int, int] | None,
+    mask_rects: list[tuple[int, int, int, int]],
+    mask_mode: str,
+    interval_count: int = 8,
+    progress_callback: Callable[[float], None] | None = None,
+) -> OPUS4DPreparationSummary:
+    """Experimental time-offset pseudo-volumes for OPUS Create 4D Volume.
+
+    Each AVI has equal dimensions and frame count. Consecutive intervals
+    shift the temporal source by one frame, retaining a common spatial-index
+    convention. Temporal frames are NOT genuine spatial ultrasound slices.
+    """
+    if not 2 <= interval_count <= 32:
+        raise ValueError("La cantidad de intervalos debe estar entre 2 y 32.")
+    frames, _, _ = extract_processed_frames(
+        video_path, crop_roi, mask_rects, mask_mode, progress_callback=None
+    )
+    count = len(frames)
+    if count < interval_count:
+        raise RuntimeError("El video tiene menos fotogramas que intervalos solicitados.")
+    fps = read_source_fps(video_path)
+    os.makedirs(output_dir, exist_ok=True)
+    names = []
+    for phase in range(interval_count):
+        name = f"Intervalo_{phase + 1:02d}.avi"
+        path = os.path.join(output_dir, name)
+        phased_frames = [frames[(z + phase) % count] for z in range(count)]
+        write_clip(path, phased_frames, fps)
+        names.append(name)
+        if progress_callback:
+            progress_callback((phase + 1) / interval_count)
+    list_path = os.path.join(output_dir, "OPUS_Create_4D.txt")
+    with open(list_path, "w", encoding="utf-8") as file:
+        file.write("\\n".join(names) + "\\n")
+    get_logger().info(
+        "Prepared experimental OPUS 4D intervals dir=%s n=%s frames=%s fps=%s",
+        output_dir, interval_count, count, fps
+    )
+    return OPUS4DPreparationSummary(output_dir, list_path, interval_count, count, fps)
+
+
 def write_nrrd(output_path: str, volume: np.ndarray, encoding: str = DEFAULT_NRRD_ENCODING) -> None:
     header = {
         "type": "uint8",
