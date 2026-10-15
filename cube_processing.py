@@ -622,7 +622,7 @@ def prepare_opus4d_intervals(
     crop_roi: tuple[int, int, int, int] | None,
     mask_rects: list[tuple[int, int, int, int]],
     mask_mode: str,
-    interval_count: int = 32,
+    interval_count: int = 225,
     start_pct: float = 0.0,
     end_pct: float = 100.0,
     progress_callback: Callable[[float], None] | None = None,
@@ -631,8 +631,8 @@ def prepare_opus4d_intervals(
 
     Temporal source frames are repurposed as spatial slices: not true 4D anatomy.
     """
-    if not 2 <= interval_count <= 64:
-        raise ValueError("Intervalos permitidos: de 2 a 64.")
+    if not 2 <= interval_count <= 225:
+        raise ValueError("Intervalos permitidos: de 2 a 225.")
     if not (0 <= start_pct < end_pct <= 100):
         raise ValueError("El rango temporal debe cumplir 0 <= inicio < fin <= 100.")
     frames, _, _ = extract_processed_frames(
