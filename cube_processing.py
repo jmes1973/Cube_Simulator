@@ -622,40 +622,48 @@ def prepare_opus4d_intervals(
     crop_roi: tuple[int, int, int, int] | None,
     mask_rects: list[tuple[int, int, int, int]],
     mask_mode: str,
-    interval_count: int = 8,
+    interval_count: int = 32,
+    start_pct: float = 0.0,
+    end_pct: float = 100.0,
     progress_callback: Callable[[float], None] | None = None,
 ) -> OPUS4DPreparationSummary:
-    """Experimental time-offset pseudo-volumes for OPUS Create 4D Volume.
+    """Create experimental cyclic time-shifted AVI intervals for OPUS.
 
-    Each AVI has equal dimensions and frame count. Consecutive intervals
-    shift the temporal source by one frame, retaining a common spatial-index
-    convention. Temporal frames are NOT genuine spatial ultrasound slices.
+    Temporal source frames are repurposed as spatial slices: not true 4D anatomy.
     """
-    if not 2 <= interval_count <= 32:
-        raise ValueError("La cantidad de intervalos debe estar entre 2 y 32.")
+    if not 2 <= interval_count <= 64:
+        raise ValueError("Intervalos permitidos: de 2 a 64.")
+    if not (0 <= start_pct < end_pct <= 100):
+        raise ValueError("El rango temporal debe cumplir 0 <= inicio < fin <= 100.")
     frames, _, _ = extract_processed_frames(
         video_path, crop_roi, mask_rects, mask_mode, progress_callback=None
     )
-    count = len(frames)
+    total = len(frames)
+    first = int(total * start_pct / 100)
+    last = min(total, max(first + 1, int(round(total * end_pct / 100))))
+    segment = frames[first:last]
+    count = len(segment)
     if count < interval_count:
-        raise RuntimeError("El video tiene menos fotogramas que intervalos solicitados.")
+        raise RuntimeError(
+            f"El tramo contiene {count} fotogramas, menos que los {interval_count} intervalos."
+        )
     fps = read_source_fps(video_path)
     os.makedirs(output_dir, exist_ok=True)
     names = []
     for phase in range(interval_count):
         name = f"Intervalo_{phase + 1:02d}.avi"
         path = os.path.join(output_dir, name)
-        phased_frames = [frames[(z + phase) % count] for z in range(count)]
-        write_clip(path, phased_frames, fps)
+        shifted = [segment[(z + phase) % count] for z in range(count)]
+        write_clip(path, shifted, fps)
         names.append(name)
         if progress_callback:
             progress_callback((phase + 1) / interval_count)
     list_path = os.path.join(output_dir, "OPUS_Create_4D.txt")
-    with open(list_path, "w", encoding="utf-8") as file:
+    with open(list_path, "w", encoding="utf-8", newline="\r\n") as file:
         file.write("\n".join(names) + "\n")
     get_logger().info(
-        "Prepared experimental OPUS 4D intervals dir=%s n=%s frames=%s fps=%s",
-        output_dir, interval_count, count, fps
+        "OPUS 4D prepared: path=%s intervals=%s frames_per_interval=%s fps=%s range=%s-%s",
+        output_dir, interval_count, count, fps, start_pct, end_pct
     )
     return OPUS4DPreparationSummary(output_dir, list_path, interval_count, count, fps)
 
