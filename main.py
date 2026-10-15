@@ -86,7 +86,7 @@ class CubeSimulator(ctk.CTk):
         self.p4d_clip_duration_var = ctk.StringVar(value=str(self.cfg.get("p4d_clip_duration_s", "2.0")))
         self.p4d_clip_start_var = ctk.StringVar(value=str(self.cfg.get("p4d_clip_start_pct", "50")))
 
-        self.opus_intervals_var = ctk.StringVar(value=str(self.cfg.get("opus_intervals", "32")))
+        self.opus_intervals_var = ctk.StringVar(value=str(self.cfg.get("opus_intervals", "225")))
         self.opus_start_var = ctk.StringVar(value=str(self.cfg.get("opus_start_pct", "0")))
         self.opus_end_var = ctk.StringVar(value=str(self.cfg.get("opus_end_pct", "100")))
 
@@ -112,7 +112,7 @@ class CubeSimulator(ctk.CTk):
 
         self.opus_frame = ctk.CTkFrame(self.mode_frame)
         self.opus_frame.pack(fill="x", padx=12, pady=(0, 12))
-        ctk.CTkLabel(self.opus_frame, text="Intervalos (2-64)").grid(row=0, column=0, padx=10, pady=8)
+        ctk.CTkLabel(self.opus_frame, text="Intervalos (2-225)").grid(row=0, column=0, padx=10, pady=8)
         ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_intervals_var).grid(row=0, column=1, padx=8, pady=8)
         ctk.CTkLabel(self.opus_frame, text="Inicio (%)").grid(row=0, column=2, padx=8)
         ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_start_var).grid(row=0, column=3, padx=8)
@@ -726,8 +726,8 @@ class CubeSimulator(ctk.CTk):
 
         try:
             if self.output_mode_var.get() == MODE_OPUS_4D:
-                output_dir = os.path.join(self.OUT_DIR, base_sin_ext + "_opus4d_nuevo")
                 intervals = int(self.opus_intervals_var.get())
+                output_dir = os.path.join(self.OUT_DIR, base_sin_ext + f"_opus4d_{intervals:03d}_intervalos")
                 start_pct = float(self.opus_start_var.get())
                 end_pct = float(self.opus_end_var.get())
                 self._save_preferences()
