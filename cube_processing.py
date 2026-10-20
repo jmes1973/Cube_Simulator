@@ -616,10 +616,57 @@ class OPUS4DPreparationSummary:
     fps: float
 
 
+def write_clip_odd_mjpeg(path: str, frames: list[np.ndarray], fps: float) -> None:
+    """Use ffmpeg to encode odd-sized MJPEG without OpenCV's even-dimension truncation."""
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError(
+            "Para generar AVI de 255x255 se requiere ffmpeg instalado y disponible en PATH."
+        )
+    h, w = frames[0].shape[:2]
+    cmd = [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{w}x{h}",
+        "-r", str(fps), "-i", "-", "-an",
+        "-c:v", "mjpeg", "-pix_fmt", "yuvj444p", "-q:v", "3", path,
+    ]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        for frame in frames:
+            if frame.shape != (h, w):
+                raise ValueError("Todos los fotogramas deben tener el mismo tamano.")
+            proc.stdin.write(np.ascontiguousarray(frame).tobytes())
+        proc.stdin.close()
+        error = proc.stderr.read().decode("utf-8", errors="replace")
+        if proc.wait() != 0:
+            raise RuntimeError(f"ffmpeg no pudo generar el AVI: {error[-500:]}")
+    except Exception:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        raise
+    finally:
+        if proc.stderr:
+            proc.stderr.close()
+    cap = cv2.VideoCapture(path)
+    try:
+        size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        if not cap.isOpened() or size != (w, h):
+            raise RuntimeError(
+                f"Resolucion AVI inesperada: {size[0]}x{size[1]}; se esperaba {w}x{h}. "
+                "No utilice este archivo para OPUS."
+            )
+    finally:
+        cap.release()
+
+
 def resize_frames_letterbox(frames: list[np.ndarray], output_size: int) -> list[np.ndarray]:
     """Preserve aspect ratio and frame order, padding to a square canvas."""
-    if output_size < 32 or output_size % 2:
-        raise ValueError("Para AVI MJPG use un tamano par de al menos 32 pixeles.")
+    if output_size < 32 or output_size > 1024:
+        raise ValueError("Tamano de salida permitido: entre 32 y 1024 pixeles.")
     resized = []
     for frame in frames:
         h, w = frame.shape[:2]
@@ -675,7 +722,10 @@ def prepare_opus4d_intervals(
         name = f"Intervalo_{phase + 1:02d}.avi"
         path = os.path.join(output_dir, name)
         shifted = [segment[(z + phase) % count] for z in range(count)]
-        write_clip(path, shifted, fps)
+        if output_size is not None and output_size % 2:
+            write_clip_odd_mjpeg(path, shifted, fps)
+        else:
+            write_clip(path, shifted, fps)
         names.append(name)
         if progress_callback:
             progress_callback((phase + 1) / interval_count)
