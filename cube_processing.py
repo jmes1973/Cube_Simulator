@@ -616,6 +616,24 @@ class OPUS4DPreparationSummary:
     fps: float
 
 
+def resize_frames_letterbox(frames: list[np.ndarray], output_size: int) -> list[np.ndarray]:
+    """Preserve aspect ratio and frame order, padding to a square canvas."""
+    if output_size < 32 or output_size % 2:
+        raise ValueError("Para AVI MJPG use un tamano par de al menos 32 pixeles.")
+    resized = []
+    for frame in frames:
+        h, w = frame.shape[:2]
+        scale = min(output_size / w, output_size / h)
+        nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+        image = cv2.resize(frame, (nw, nh), interpolation=interpolation)
+        canvas = np.zeros((output_size, output_size), dtype=np.uint8)
+        x, y = (output_size - nw) // 2, (output_size - nh) // 2
+        canvas[y:y + nh, x:x + nw] = image
+        resized.append(canvas)
+    return resized
+
+
 def prepare_opus4d_intervals(
     video_path: str,
     output_dir: str,
@@ -623,6 +641,7 @@ def prepare_opus4d_intervals(
     mask_rects: list[tuple[int, int, int, int]],
     mask_mode: str,
     interval_count: int = 225,
+    output_size: int | None = None,
     start_pct: float = 0.0,
     end_pct: float = 100.0,
     progress_callback: Callable[[float], None] | None = None,
@@ -642,6 +661,8 @@ def prepare_opus4d_intervals(
     first = int(total * start_pct / 100)
     last = min(total, max(first + 1, int(round(total * end_pct / 100))))
     segment = frames[first:last]
+    if output_size is not None:
+        segment = resize_frames_letterbox(segment, output_size)
     count = len(segment)
     if count < interval_count:
         raise RuntimeError(
