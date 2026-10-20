@@ -11,6 +11,8 @@ from cube_processing import (
     app_log_path,
     apply_anonymization,
     export_pseudo4d_clips,
+    export_anonymized_avi,
+    prepare_opus4d_intervals,
     get_logger,
     process_to_nrrd,
     read_middle_frame,
@@ -22,6 +24,8 @@ ctk.set_default_color_theme("blue")
 
 MODE_PSEUDO_3D = "Pseudo 3D"
 MODE_PSEUDO_4D = "Pseudo 4D"
+MODE_ANON_AVI = "AVI anonimizado"
+MODE_OPUS_4D = "OPUS 4D (test)"
 
 
 def appdata_config_path():
@@ -82,6 +86,11 @@ class CubeSimulator(ctk.CTk):
         self.p4d_clip_duration_var = ctk.StringVar(value=str(self.cfg.get("p4d_clip_duration_s", "2.0")))
         self.p4d_clip_start_var = ctk.StringVar(value=str(self.cfg.get("p4d_clip_start_pct", "50")))
 
+        self.opus_intervals_var = ctk.StringVar(value=str(self.cfg.get("opus_intervals", "225")))
+        self.opus_start_var = ctk.StringVar(value=str(self.cfg.get("opus_start_pct", "0")))
+        self.opus_end_var = ctk.StringVar(value=str(self.cfg.get("opus_end_pct", "100")))
+        self.opus_size_var = ctk.StringVar(value=str(self.cfg.get("opus_output_size", "255")))
+
         self.label_titulo = ctk.CTkLabel(self, text="CUBE SIMULATOR", font=("Roboto", 28, "bold"))
         self.label_titulo.pack(pady=(18, 8))
 
@@ -93,7 +102,7 @@ class CubeSimulator(ctk.CTk):
 
         self.mode_switch = ctk.CTkSegmentedButton(
             self.mode_frame,
-            values=[MODE_PSEUDO_3D, MODE_PSEUDO_4D],
+            values=[MODE_PSEUDO_3D, MODE_PSEUDO_4D, MODE_ANON_AVI, MODE_OPUS_4D],
             variable=self.output_mode_var,
             command=self._on_mode_change,
         )
@@ -101,6 +110,19 @@ class CubeSimulator(ctk.CTk):
 
         self.mode_hint = ctk.CTkLabel(self.mode_frame, text="", text_color="gray", justify="left")
         self.mode_hint.pack(anchor="w", padx=14, pady=(2, 12))
+
+        self.opus_frame = ctk.CTkFrame(self.mode_frame)
+        self.opus_frame.pack(fill="x", padx=12, pady=(0, 12))
+        ctk.CTkLabel(self.opus_frame, text="Intervalos (2-225)").grid(row=0, column=0, padx=10, pady=8)
+        ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_intervals_var).grid(row=0, column=1, padx=8, pady=8)
+        ctk.CTkLabel(self.opus_frame, text="Inicio (%)").grid(row=0, column=2, padx=8)
+        ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_start_var).grid(row=0, column=3, padx=8)
+        ctk.CTkLabel(self.opus_frame, text="Fin (%)").grid(row=0, column=4, padx=8)
+        ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_end_var).grid(row=0, column=5, padx=8)
+
+        ctk.CTkLabel(self.opus_frame, text="Lado de salida (px)").grid(row=1, column=0, columnspan=2, padx=10, pady=8, sticky="w")
+        ctk.CTkEntry(self.opus_frame, textvariable=self.opus_size_var, width=100).grid(row=1, column=2, columnspan=2, padx=8, pady=8)
+        ctk.CTkLabel(self.opus_frame, text="255 recomendado; conserva proporcion y rellena bordes").grid(row=1, column=4, columnspan=2, padx=8, pady=8)
 
         self.p4d_frame = ctk.CTkFrame(self.mode_frame)
         self.p4d_frame.pack(fill="x", padx=12, pady=(0, 12))
@@ -221,6 +243,10 @@ class CubeSimulator(ctk.CTk):
         self.status_label.configure(text=" | ".join(parts), text_color="white")
 
     def _save_preferences(self):
+        self.cfg["opus_output_size"] = self.opus_size_var.get()
+        self.cfg["opus_intervals"] = self.opus_intervals_var.get()
+        self.cfg["opus_start_pct"] = self.opus_start_var.get()
+        self.cfg["opus_end_pct"] = self.opus_end_var.get()
         self.cfg["output_mode"] = self.output_mode_var.get()
         self.cfg["mask_mode"] = self.mask_mode_var.get()
         self.cfg["p4d_motion"] = "Lineal"
@@ -439,6 +465,10 @@ class CubeSimulator(ctk.CTk):
         return True
 
     def _on_mode_change(self, selected_mode: str):
+        if selected_mode == MODE_OPUS_4D:
+            self.opus_frame.pack(fill="x", padx=12, pady=(0, 12), before=self.p4d_frame)
+        else:
+            self.opus_frame.pack_forget()
         if selected_mode == MODE_PSEUDO_4D:
             self.mode_hint.configure(
                 text=(
@@ -448,6 +478,14 @@ class CubeSimulator(ctk.CTk):
             )
             self.btn_procesar.configure(text="5. GENERAR PSEUDO 4D (CLIPS)")
             self._set_p4d_controls_state("normal")
+        elif selected_mode == MODE_OPUS_4D:
+            self.mode_hint.configure(text="Experimental: genera intervalos temporales AVI y TXT para OPUS. Los fotogramas no son cortes 3D reales.")
+            self.btn_procesar.configure(text="5. PREPARAR OPUS 4D (AVI + TXT)")
+            self._set_p4d_controls_state("disabled")
+        elif selected_mode == MODE_ANON_AVI:
+            self.mode_hint.configure(text="AVI anonimizado: conserva los fotogramas y FPS de origen; exporta AVI con codec MJPG, sin convertir a NRRD.")
+            self.btn_procesar.configure(text="5. EXPORTAR AVI ANONIMIZADO (MJPG)")
+            self._set_p4d_controls_state("disabled")
         else:
             self.mode_hint.configure(
                 text=(
@@ -693,6 +731,52 @@ class CubeSimulator(ctk.CTk):
         base_sin_ext = os.path.splitext(nombre_base)[0]
 
         try:
+            if self.output_mode_var.get() == MODE_OPUS_4D:
+                intervals = int(self.opus_intervals_var.get())
+                output_dir = os.path.join(self.OUT_DIR, base_sin_ext + f"_opus4d_{intervals:03d}_{self.opus_size_var.get()}px")
+                output_size_text = self.opus_size_var.get()
+                output_size = None if output_size_text.strip().lower() == "original" else int(output_size_text)
+                start_pct = float(self.opus_start_var.get())
+                end_pct = float(self.opus_end_var.get())
+                self._save_preferences()
+                summary = prepare_opus4d_intervals(
+                    video_path=self.video_actual,
+                    output_dir=output_dir,
+                    crop_roi=self.crop_roi,
+                    mask_rects=self.mask_rects,
+                    mask_mode=self.mask_mode,
+                    interval_count=intervals,
+                    output_size=output_size,
+                    start_pct=start_pct,
+                    end_pct=end_pct,
+                    progress_callback=self._set_progress,
+                )
+                messagebox.showinfo(
+                    "Intervalos OPUS 4D preparados",
+                    f"Carpeta: {summary.output_dir}\nTXT: {summary.list_path}\n"
+                    f"Intervalos: {summary.interval_count}\n"
+                    "Abra Info > Academic > Course Creator > Create 4D Volume en OPUS y seleccione el TXT.\n\n"
+                    "PRUEBA EXPERIMENTAL: los cortes son fotogramas temporales, no un volumen espacial real."
+                )
+                self._refresh_status("OPUS 4D preparado")
+                return
+            if self.output_mode_var.get() == MODE_ANON_AVI:
+                output_path = os.path.join(self.OUT_DIR, base_sin_ext + "_anonimizado_MJPG.avi")
+                summary = export_anonymized_avi(
+                    video_path=self.video_actual,
+                    output_path=output_path,
+                    crop_roi=self.crop_roi,
+                    mask_rects=self.mask_rects,
+                    mask_mode=self.mask_mode,
+                    progress_callback=self._set_progress,
+                )
+                self.progressbar.set(1.0)
+                messagebox.showinfo("AVI exportado",
+                    f"Archivo: {summary.output_path}\nFotogramas: {summary.frame_count}\nFPS: {summary.fps:.2f}\n"
+                    f"Resolucion: {summary.frame_size[0]} x {summary.frame_size[1]}\nCodec: {summary.codec}\n\n"
+                    "IMPORTANTE: revise todos los fotogramas para confirmar que no haya datos del paciente.")
+                self._refresh_status(f"Exportado: {os.path.basename(summary.output_path)}")
+                return
             if self.output_mode_var.get() == MODE_PSEUDO_4D:
                 params = self._get_pseudo4d_params()
                 output_dir = os.path.join(self.OUT_DIR, base_sin_ext + "_pseudo4d")

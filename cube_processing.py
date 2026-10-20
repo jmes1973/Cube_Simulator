@@ -559,6 +559,186 @@ def export_pseudo4d_clips(
     )
 
 
+
+@dataclass
+class AVIExportSummary:
+    output_path: str
+    frame_count: int
+    fps: float
+    frame_size: tuple[int, int]
+    codec: str = "MJPG"
+
+
+def export_anonymized_avi(
+    video_path: str,
+    output_path: str,
+    crop_roi: tuple[int, int, int, int] | None,
+    mask_rects: list[tuple[int, int, int, int]],
+    mask_mode: str,
+    progress_callback: Callable[[float], None] | None = None,
+) -> AVIExportSummary:
+    """Export the complete anonymized sequence as AVI without stacking frames."""
+    frames, _, _ = extract_processed_frames(
+        video_path=video_path,
+        crop_roi=crop_roi,
+        mask_rects=mask_rects,
+        mask_mode=mask_mode,
+        progress_callback=progress_callback,
+    )
+    if not frames:
+        raise RuntimeError("No se encontraron fotogramas validos para exportar.")
+    fps = read_source_fps(video_path)
+    height, width = frames[0].shape[:2]
+    write_clip(output_path, frames, fps)
+    check = cv2.VideoCapture(output_path)
+    try:
+        if not check.isOpened():
+            raise RuntimeError("El AVI exportado no se puede abrir.")
+        ok, _ = check.read()
+        if not ok:
+            raise RuntimeError("El AVI exportado no contiene fotogramas legibles.")
+    finally:
+        check.release()
+    if progress_callback:
+        progress_callback(1.0)
+    get_logger().info("Exported anonymized AVI %s frames=%s fps=%s size=%sx%s codec=MJPG",
+                      output_path, len(frames), fps, width, height)
+    return AVIExportSummary(output_path, len(frames), fps, (width, height))
+
+
+
+@dataclass
+class OPUS4DPreparationSummary:
+    output_dir: str
+    list_path: str
+    interval_count: int
+    frames_per_interval: int
+    fps: float
+
+
+def write_clip_odd_mjpeg(path: str, frames: list[np.ndarray], fps: float) -> None:
+    """Use ffmpeg to encode odd-sized MJPEG without OpenCV's even-dimension truncation."""
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError(
+            "Para generar AVI de 255x255 se requiere ffmpeg instalado y disponible en PATH."
+        )
+    h, w = frames[0].shape[:2]
+    cmd = [
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{w}x{h}",
+        "-r", str(fps), "-i", "-", "-an",
+        "-c:v", "mjpeg", "-pix_fmt", "yuvj444p", "-q:v", "3", path,
+    ]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        for frame in frames:
+            if frame.shape != (h, w):
+                raise ValueError("Todos los fotogramas deben tener el mismo tamano.")
+            proc.stdin.write(np.ascontiguousarray(frame).tobytes())
+        proc.stdin.close()
+        error = proc.stderr.read().decode("utf-8", errors="replace")
+        if proc.wait() != 0:
+            raise RuntimeError(f"ffmpeg no pudo generar el AVI: {error[-500:]}")
+    except Exception:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        raise
+    finally:
+        if proc.stderr:
+            proc.stderr.close()
+    cap = cv2.VideoCapture(path)
+    try:
+        size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        if not cap.isOpened() or size != (w, h):
+            raise RuntimeError(
+                f"Resolucion AVI inesperada: {size[0]}x{size[1]}; se esperaba {w}x{h}. "
+                "No utilice este archivo para OPUS."
+            )
+    finally:
+        cap.release()
+
+
+def resize_frames_letterbox(frames: list[np.ndarray], output_size: int) -> list[np.ndarray]:
+    """Preserve aspect ratio and frame order, padding to a square canvas."""
+    if output_size < 32 or output_size > 1024:
+        raise ValueError("Tamano de salida permitido: entre 32 y 1024 pixeles.")
+    resized = []
+    for frame in frames:
+        h, w = frame.shape[:2]
+        scale = min(output_size / w, output_size / h)
+        nw, nh = max(1, int(round(w * scale))), max(1, int(round(h * scale)))
+        interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_LINEAR
+        image = cv2.resize(frame, (nw, nh), interpolation=interpolation)
+        canvas = np.zeros((output_size, output_size), dtype=np.uint8)
+        x, y = (output_size - nw) // 2, (output_size - nh) // 2
+        canvas[y:y + nh, x:x + nw] = image
+        resized.append(canvas)
+    return resized
+
+
+def prepare_opus4d_intervals(
+    video_path: str,
+    output_dir: str,
+    crop_roi: tuple[int, int, int, int] | None,
+    mask_rects: list[tuple[int, int, int, int]],
+    mask_mode: str,
+    interval_count: int = 225,
+    output_size: int | None = None,
+    start_pct: float = 0.0,
+    end_pct: float = 100.0,
+    progress_callback: Callable[[float], None] | None = None,
+) -> OPUS4DPreparationSummary:
+    """Create experimental cyclic time-shifted AVI intervals for OPUS.
+
+    Temporal source frames are repurposed as spatial slices: not true 4D anatomy.
+    """
+    if not 2 <= interval_count <= 225:
+        raise ValueError("Intervalos permitidos: de 2 a 225.")
+    if not (0 <= start_pct < end_pct <= 100):
+        raise ValueError("El rango temporal debe cumplir 0 <= inicio < fin <= 100.")
+    frames, _, _ = extract_processed_frames(
+        video_path, crop_roi, mask_rects, mask_mode, progress_callback=None
+    )
+    total = len(frames)
+    first = int(total * start_pct / 100)
+    last = min(total, max(first + 1, int(round(total * end_pct / 100))))
+    segment = frames[first:last]
+    if output_size is not None:
+        segment = resize_frames_letterbox(segment, output_size)
+    count = len(segment)
+    if count < interval_count:
+        raise RuntimeError(
+            f"El tramo contiene {count} fotogramas, menos que los {interval_count} intervalos."
+        )
+    fps = read_source_fps(video_path)
+    os.makedirs(output_dir, exist_ok=True)
+    names = []
+    for phase in range(interval_count):
+        name = f"Intervalo_{phase + 1:02d}.avi"
+        path = os.path.join(output_dir, name)
+        shifted = [segment[(z + phase) % count] for z in range(count)]
+        if output_size is not None and output_size % 2:
+            write_clip_odd_mjpeg(path, shifted, fps)
+        else:
+            write_clip(path, shifted, fps)
+        names.append(name)
+        if progress_callback:
+            progress_callback((phase + 1) / interval_count)
+    list_path = os.path.join(output_dir, "OPUS_Create_4D.txt")
+    with open(list_path, "w", encoding="utf-8", newline="\r\n") as file:
+        file.write("\n".join(names) + "\n")
+    get_logger().info(
+        "OPUS 4D prepared: path=%s intervals=%s frames_per_interval=%s fps=%s range=%s-%s",
+        output_dir, interval_count, count, fps, start_pct, end_pct
+    )
+    return OPUS4DPreparationSummary(output_dir, list_path, interval_count, count, fps)
+
+
 def write_nrrd(output_path: str, volume: np.ndarray, encoding: str = DEFAULT_NRRD_ENCODING) -> None:
     header = {
         "type": "uint8",
