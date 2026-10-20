@@ -465,10 +465,18 @@ class CubeSimulator(ctk.CTk):
         return True
 
     def _on_mode_change(self, selected_mode: str):
+        # Mostrar solamente los controles que corresponden al modo actual.
+        # Ocultar el panel inactivo evita que el boton de exportacion quede
+        # fuera de la altura visible de la ventana.
         if selected_mode == MODE_OPUS_4D:
-            self.opus_frame.pack(fill="x", padx=12, pady=(0, 12), before=self.p4d_frame)
+            self.p4d_frame.pack_forget()
+            self.opus_frame.pack(fill="x", padx=12, pady=(0, 12))
+        elif selected_mode == MODE_PSEUDO_4D:
+            self.opus_frame.pack_forget()
+            self.p4d_frame.pack(fill="x", padx=12, pady=(0, 12))
         else:
             self.opus_frame.pack_forget()
+            self.p4d_frame.pack_forget()
         if selected_mode == MODE_PSEUDO_4D:
             self.mode_hint.configure(
                 text=(
