@@ -89,6 +89,7 @@ class CubeSimulator(ctk.CTk):
         self.opus_intervals_var = ctk.StringVar(value=str(self.cfg.get("opus_intervals", "225")))
         self.opus_start_var = ctk.StringVar(value=str(self.cfg.get("opus_start_pct", "0")))
         self.opus_end_var = ctk.StringVar(value=str(self.cfg.get("opus_end_pct", "100")))
+        self.opus_size_var = ctk.StringVar(value=str(self.cfg.get("opus_output_size", "256")))
 
         self.label_titulo = ctk.CTkLabel(self, text="CUBE SIMULATOR", font=("Roboto", 28, "bold"))
         self.label_titulo.pack(pady=(18, 8))
@@ -118,6 +119,10 @@ class CubeSimulator(ctk.CTk):
         ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_start_var).grid(row=0, column=3, padx=8)
         ctk.CTkLabel(self.opus_frame, text="Fin (%)").grid(row=0, column=4, padx=8)
         ctk.CTkEntry(self.opus_frame, width=70, textvariable=self.opus_end_var).grid(row=0, column=5, padx=8)
+
+        ctk.CTkLabel(self.opus_frame, text="Salida cuadrada (px)").grid(row=1, column=0, columnspan=2, padx=10, pady=8, sticky="w")
+        ctk.CTkOptionMenu(self.opus_frame, values=["256", "320", "384", "Original"], variable=self.opus_size_var, width=105).grid(row=1, column=2, columnspan=2, padx=8, pady=8)
+        ctk.CTkLabel(self.opus_frame, text="Conserva proporciones + bordes negros").grid(row=1, column=4, columnspan=2, padx=8, pady=8)
 
         self.p4d_frame = ctk.CTkFrame(self.mode_frame)
         self.p4d_frame.pack(fill="x", padx=12, pady=(0, 12))
@@ -238,6 +243,7 @@ class CubeSimulator(ctk.CTk):
         self.status_label.configure(text=" | ".join(parts), text_color="white")
 
     def _save_preferences(self):
+        self.cfg["opus_output_size"] = self.opus_size_var.get()
         self.cfg["opus_intervals"] = self.opus_intervals_var.get()
         self.cfg["opus_start_pct"] = self.opus_start_var.get()
         self.cfg["opus_end_pct"] = self.opus_end_var.get()
@@ -727,7 +733,9 @@ class CubeSimulator(ctk.CTk):
         try:
             if self.output_mode_var.get() == MODE_OPUS_4D:
                 intervals = int(self.opus_intervals_var.get())
-                output_dir = os.path.join(self.OUT_DIR, base_sin_ext + f"_opus4d_{intervals:03d}_intervalos")
+                output_dir = os.path.join(self.OUT_DIR, base_sin_ext + f"_opus4d_{intervals:03d}_{self.opus_size_var.get()}px")
+                output_size_text = self.opus_size_var.get()
+                output_size = None if output_size_text == "Original" else int(output_size_text)
                 start_pct = float(self.opus_start_var.get())
                 end_pct = float(self.opus_end_var.get())
                 self._save_preferences()
@@ -738,6 +746,7 @@ class CubeSimulator(ctk.CTk):
                     mask_rects=self.mask_rects,
                     mask_mode=self.mask_mode,
                     interval_count=intervals,
+                    output_size=output_size,
                     start_pct=start_pct,
                     end_pct=end_pct,
                     progress_callback=self._set_progress,
